@@ -1627,7 +1627,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 
   <footer>
     <div class="solo-pwa" style="margin-bottom:8px"><a href="#" class="salir-ses" id="salirSesion"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span id="salirTxt">Cerrar sesión</span></a> <a href="#" id="admLink" style="color:var(--ink2)">Acceso administrador</a> <a href="#" id="usrSalir" hidden style="color:var(--ink2);margin-left:10px">Cambiar de usuario</a> <span id="admBox" hidden><input type="password" id="admKey" placeholder="Clave" style="min-width:0;width:140px"> <button class="btn" id="admGo">Entrar</button></span></div>
-    <span id="fuente"></span> <span class="solo-pwa" style="opacity:.6">· Versión 02/11 22:05</span>
+    <span id="fuente"></span> <span class="solo-pwa" style="opacity:.6">· Versión 02/11 23:10</span>
     <ul>
       <li>La “calle” corresponde al encabezado de sección de la planilla (una esquina puede figurar bajo la calle transversal).</li>
       <li>Cada fila de la planilla es un registro (un catastro); <span id="sinced"></span></li>
@@ -2701,7 +2701,7 @@ function parseSheet(){
   if(hi<0){ showPrev('<span class="err">No encontré la fila de encabezados (debe tener una columna “Domicilio”).</span>'); return; }
   const H=rows[hi].map(norm), find=(...keys)=>H.findIndex(h=>h&&keys.some(k=>h.includes(k)));
   const c={ced:find('cedula'),dom:find('domicilio'),cat:find('catastro'),ent:find('entregad'),pag:find('pagad'),eje:find('ejecutad'),
-    fp:find('forma'),anio:find('fecha','ano','año'),monto:find('monto','importe'),obs:find('observ'),calle:H.findIndex(h=>h==='calle'||h==='calles'),pliego:find('pliego'),por:find('cargado'),niv:find('nivelac'),prov:find('provis'),contra:find('contrapiso'),juntas:find('junta'),caz:find('cazuela')};
+    enej:find('en ejecuc','enejecuc'),fp:find('forma'),anio:find('fecha','ano','año'),monto:find('monto','importe'),obs:find('observ'),calle:H.findIndex(h=>h==='calle'||h==='calles'),pliego:find('pliego'),por:find('cargado'),niv:find('nivelac'),prov:find('provis'),contra:find('contrapiso'),juntas:find('junta'),caz:find('cazuela')};
   const si=v=>['si','sí','x','1','true','ok'].includes(norm(v));
   const out=[], skipped=[]; let sec='';
   for(let i=hi+1;i<rows.length;i++){
@@ -2718,7 +2718,7 @@ function parseSheet(){
     if(anio instanceof Date) anio=anio.getFullYear(); else if(typeof anio==='number'&&anio>3000){ anio=XLSX.SSF.parse_date_code(anio)?.y??null; }
     else if(typeof anio==='string'){ const m=anio.match(/(19|20)\d\d/); anio=m?+m[0]:null; }
     out.push({por:c.por>=0&&r[c.por]!=null?String(r[c.por]):'',pliego:c.pliego>=0&&r[c.pliego]!=null?String(r[c.pliego]):null,ced:c.ced>=0?r[c.ced]:null,dom:String(dom).replace(/ESAPAÑA/g,'ESPAÑA').replace(/CASEEROS/g,'CASEROS'),cat:c.cat>=0?(r[c.cat]??''):'',calle:fixCalle(calle),
-      ent:c.ent>=0?si(r[c.ent]):true,pag:c.pag>=0&&si(r[c.pag]),eje:c.eje>=0&&si(r[c.eje]),fp:c.fp>=0?r[c.fp]:'',anio,monto:c.monto>=0?numTrab(String(r[c.monto]??'').replace(/[$\s]/g,'').replace(/\.(?=\d{3}(\D|$))/g,'')):null,obs:c.obs>=0?(r[c.obs]??''):'',
+      ent:c.ent>=0?si(r[c.ent]):true,pag:c.pag>=0&&si(r[c.pag]),eje:c.eje>=0&&si(r[c.eje]),enej:c.enej>=0&&si(r[c.enej]),fp:c.fp>=0?r[c.fp]:'',anio,monto:c.monto>=0?numTrab(String(r[c.monto]??'').replace(/[$\s]/g,'').replace(/\.(?=\d{3}(\D|$))/g,'')):null,obs:c.obs>=0?(r[c.obs]??''):'',
       ...Object.fromEntries(TRAB.map(([k])=>[k,c[k]>=0?numTrab(r[c[k]]):null]))});
   }
   if(!out.length){ showPrev('<span class="err">La hoja no tiene registros reconocibles.</span>'); return; }
@@ -3277,7 +3277,7 @@ async function pwAcceso(){
   try{ const j=await pwPost({action:'acceso',usuario:usu,clave,crear});
     if(j&&j.ok){ PW.u=j.usuario||usu; PW.yo=String(j.nombre||''); PW.rol=j.rol||''; PW.t=j.t||''; [[PW_USR,PW.u],[PW_YO,PW.yo],[PW_ROL,PW.rol],[PW_TOK,PW.t]].forEach(([k,v])=>lsSet(k,v));
       mostrarAcceso(false); tilesKey='';
-      if(PW.prueba||vista){ const nom=PW.yo; verComo(VER_DE_ROL[PW.rol]??'cedulas',true); if(PW.rol!=='admin'){ PW.yo=nom; tilesKey=''; render(); } }
+      if(PW.prueba||vista){ const nom=PW.yo; verComo((PW.rol in VER_DE_ROL)?VER_DE_ROL[PW.rol]:'cedulas',true); if(PW.rol!=='admin'){ PW.yo=nom; tilesKey=''; render(); } }
       else { PW.role=PW.rol==='admin'?'admin':'contrib'; setRole(); pwRebuild(); }
       toast('¡Hola, '+PW.yo.split(' ')[0]+'!'); pwSync(); }
     else if(j&&j.error==='crear'){ $('accRepL').hidden=false; msg.className='acc-msg info'; msg.textContent=`Hola${j.nombre?' '+j.nombre:''}: es tu primera vez. Repetí la contraseña que elegiste para crearla.`; $('accGo').disabled=false; $('accGo').textContent='Crear contraseña e ingresar'; $('accRep').focus(); return; }
