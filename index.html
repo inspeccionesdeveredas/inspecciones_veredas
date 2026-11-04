@@ -2527,7 +2527,7 @@ const form=$('regForm');
 function fillForm(id){
   editId=id; $('regErr').textContent='';
   const d=id!==null?DATA.find(x=>x.id===id):null;
-  { const PL=pliegosList(); const def=d?.pliego??(F.pliego||lastPliego||(PL.length===1?PL[0]:''));
+  { const PL=[...new Set(DATA.map(x=>String(x.pliego??'').trim()).filter(Boolean))].sort(pliegoSort); const def=d?.pliego??(F.pliego||lastPliego||(PL.length===1?PL[0]:''));
     form.pliego.innerHTML=(def?'':'<option value="">Elegí un pliego…</option>')+PL.map(v=>`<option value="${esc(v)}">Pliego ${esc(v)}</option>`).join('')+(CARGA?'':'<option value="__otro">Otro (nuevo)…</option>');
     form.pliego.value=PL.includes(def)?def:''; form.pliegoOtro.value=''; $('pliegoOtroWrap').hidden=true; }
   if(CARGA){ let n=''; try{ n=localStorage.getItem('pmv-carga-nombre')||''; }catch(e){} form.por.value=d?.por||n; porSync(); }
