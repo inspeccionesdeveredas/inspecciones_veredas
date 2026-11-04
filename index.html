@@ -1869,11 +1869,13 @@ function load(){
   if(saved && saved.meta && saved.meta.updated>EMB.meta.updated){ META=saved.meta; DATA=saved.rows.map(r=>enrich(r.pliego==null?{...r,pliego:'4'}:r)); }
   else { META=EMB.meta; DATA=EMB.rows.map(enrich); }
   META=fixMeta(META);
-  META.pliegos=[...new Set([...(EMB.meta.pliegos||[]),...(META.pliegos||[])])];
+  META.pliegos=[...new Set([...(EMB.meta.pliegos||[]),...(META.pliegos||[])].map(cleanPliego).filter(v=>v&&!isPliegoPrueba(v)))];
 }
 function fixMeta(m){ m={...m}; if(!m.fuentes){ m.fuentes={}; if(m.fuente) m.fuentes['4']=m.fuente; } delete m.fuente; return m; }
 const pliegoSort=(a,b)=>String(a).localeCompare(String(b),'es',{numeric:true});
-const pliegosList=()=>[...new Set([...(META.pliegos||[]),...(typeof ON!=='undefined'&&ON.pliegos||[]),...DATA.map(d=>d.pliego)].map(String).filter(Boolean))].sort(pliegoSort);
+const cleanPliego=v=>String(v??'').trim();
+const isPliegoPrueba=v=>cleanPliego(v).toLocaleLowerCase('es')==='4 prueba';
+const pliegosList=()=>{const seen=new Set();return [...(META.pliegos||[]),...(typeof ON!=='undefined'&&ON.pliegos||[]),...DATA.map(d=>d.pliego)].map(cleanPliego).filter(v=>{const k=v.toLocaleLowerCase('es');if(!v||isPliegoPrueba(v)||seen.has(k))return false;seen.add(k);return true;}).sort(pliegoSort);};
 function persist(msg){
   if(ONLINE){ onlinePersist(); if(msg) toast(msg); render(); return; }
   if(PWA){ pwPersist(); if(msg) toast(msg); return; }
@@ -2684,21 +2686,24 @@ function readFile(f){
     const names=wb.SheetNames;
     let best=names.find(n=>norm(n).includes('pliego'))||names[0];
     $('impSheet').innerHTML=names.map((n,i)=>`<option value="${i}">${esc(n.trim())}</option>`).join(''); $('impSheet').value=String(names.indexOf(best));
+    const pliegoSheets=names.filter(n=>/^pliego\s*\d+$/i.test(String(n).trim()));
+    if(pliegoSheets.length>=2){ $('impSheetWrap').style.display='none'; parseAllPliegoSheets(pliegoSheets); return; }
     $('impSheetWrap').style.display=names.length>1?'':'none';
     const m=(names.join(' ')+' '+f.name).match(/pliego\s*(?:n[°ºo.]*\s*)?(\d+)/i);
     if(!$('impPliego').value.trim()) $('impPliego').value=m?m[1]:(F.pliego||'');
-    parseSheet();
+    const oneMatch=String(best).trim().match(/^pliego\s*(\d+)$/i);
+    parseOneSheet(best,oneMatch?oneMatch[1]:undefined,false);
   };
   rd.readAsArrayBuffer(f);
 }
 $('impSheet').onchange=parseSheet;
 function showPrev(html){ $('impPrev').style.display=''; $('impPrev').innerHTML=html; }
-function parseSheet(){
-  const name=wb.SheetNames[+$('impSheet').value];
+function parseOneSheet(sheetOverride,forcedPliego,quiet){
+  const name=sheetOverride||wb.SheetNames[+$('impSheet').value];
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:null,raw:true,blankrows:false});
-  parsed=null; $('impApply').disabled=true; $('impMode').style.display='none';
+  if(!quiet){parsed=null; $('impApply').disabled=true; $('impMode').style.display='none';}
   const hi=rows.findIndex(r=>r&&r.some(v=>norm(v).includes('domicilio')));
-  if(hi<0){ showPrev('<span class="err">No encontré la fila de encabezados (debe tener una columna “Domicilio”).</span>'); return; }
+  if(hi<0){ if(!quiet) showPrev('<span class="err">No encontré la fila de encabezados (debe tener una columna “Domicilio”).</span>'); return null; }
   const H=rows[hi].map(norm), find=(...keys)=>H.findIndex(h=>h&&keys.some(k=>h.includes(k)));
   const c={ced:find('cedula'),dom:find('domicilio'),cat:find('catastro'),ent:find('entregad'),pag:find('pagad'),eje:find('ejecutad'),
     fp:find('forma'),anio:find('fecha','ano','año'),monto:find('monto','importe'),obs:find('observ'),calle:H.findIndex(h=>h==='calle'||h==='calles'),pliego:find('pliego'),por:find('cargado'),niv:find('nivelac'),prov:find('provis'),contra:find('contrapiso'),juntas:find('junta'),caz:find('cazuela')};
@@ -2717,49 +2722,67 @@ function parseSheet(){
     let anio=c.anio>=0?r[c.anio]:null;
     if(anio instanceof Date) anio=anio.getFullYear(); else if(typeof anio==='number'&&anio>3000){ anio=XLSX.SSF.parse_date_code(anio)?.y??null; }
     else if(typeof anio==='string'){ const m=anio.match(/(19|20)\d\d/); anio=m?+m[0]:null; }
-    out.push({por:c.por>=0&&r[c.por]!=null?String(r[c.por]):'',pliego:c.pliego>=0&&r[c.pliego]!=null?String(r[c.pliego]):null,ced:c.ced>=0?r[c.ced]:null,dom:String(dom).replace(/ESAPAÑA/g,'ESPAÑA').replace(/CASEEROS/g,'CASEROS'),cat:c.cat>=0?(r[c.cat]??''):'',calle:fixCalle(calle),
+    out.push({por:c.por>=0&&r[c.por]!=null?String(r[c.por]):'',pliego:forcedPliego|| (c.pliego>=0&&r[c.pliego]!=null?String(r[c.pliego]).trim():null),ced:c.ced>=0?r[c.ced]:null,dom:String(dom).replace(/ESAPAÑA/g,'ESPAÑA').replace(/CASEEROS/g,'CASEROS'),cat:c.cat>=0?(r[c.cat]??''):'',calle:fixCalle(calle),
       ent:c.ent>=0?si(r[c.ent]):true,pag:c.pag>=0&&si(r[c.pag]),eje:c.eje>=0&&si(r[c.eje]),fp:c.fp>=0?r[c.fp]:'',anio,monto:c.monto>=0?numTrab(String(r[c.monto]??'').replace(/[$\s]/g,'').replace(/\.(?=\d{3}(\D|$))/g,'')):null,obs:c.obs>=0?(r[c.obs]??''):'',
       ...Object.fromEntries(TRAB.map(([k])=>[k,c[k]>=0?numTrab(r[c[k]]):null]))});
   }
-  if(!out.length){ showPrev('<span class="err">La hoja no tiene registros reconocibles.</span>'); return; }
+  if(!out.length){ if(!quiet) showPrev('<span class="err">La hoja no tiene registros reconocibles.</span>'); return null; }
   parsed={rows:out,name:`“${wb._name}”, hoja ${name.trim()}`,hasCol:out.some(r=>r.pliego)};
-  const tmp=out.map(r=>enrich({...r,id:-1}));
-  const cnt=k=>tmp.filter(d=>d.estado===k).length;
-  const missing=Object.entries({Cédula:c.ced,Catastro:c.cat,Pagadas:c.pag,Ejecutada:c.eje,'Forma de pago':c.fp}).filter(([k,v])=>v<0).map(([k])=>k);
-  showPrev(`<b>${out.length} registros</b> en ${new Set(out.map(r=>r.calle)).size} calles
-    <ul><li>${cnt('Ejecutada')} ejecutadas · ${cnt('En ejecución')} en ejecución · ${cnt('Pagada, sin ejecutar')} pagadas sin ejecutar · ${cnt('Entregada, sin pago')} sin pago</li>
-    ${missing.length?`<li>Columnas no encontradas: ${missing.join(', ')}</li>`:''}
-    ${skipped.length?`<li>${skipped.length} fila(s) ignoradas por no tener domicilio</li>`:''}</ul>`);
-  if(parsed.hasCol){ const ps=[...new Set(out.map(r=>r.pliego).filter(Boolean))].sort(pliegoSort);
-    $('impPliegoHelp').textContent=`La planilla trae columna Pliego (${ps.join(', ')}). Este número se usa solo para las filas que no lo tengan.`; }
-  else $('impPliegoHelp').textContent='La planilla no trae columna Pliego: todos los registros van a este número.';
-  const porN=[...new Set(out.map(r=>r.por).filter(Boolean))];
-  if(porN.length){ document.querySelector('input[name=mode][value=merge]').checked=true; $('impPrev').insertAdjacentHTML('beforeend',`<div class="help" style="margin-top:6px">Registros enviados desde la versión solo carga por: <b>${porN.map(esc).join(', ')}</b>. Se seleccionó <b>Agregar</b> para sumarlos sin borrar nada.</div>`); }
-  $('impMode').style.display=''; impCheck();
+  if(!quiet){
+    const tmp=out.map(r=>enrich({...r,id:-1}));
+    const cnt=k=>tmp.filter(d=>d.estado===k).length;
+    const missing=Object.entries({Cédula:c.ced,Catastro:c.cat,Pagadas:c.pag,Ejecutada:c.eje,'Forma de pago':c.fp}).filter(([k,v])=>v<0).map(([k])=>k);
+    showPrev(`<b>${out.length} registros</b> en ${new Set(out.map(r=>r.calle)).size} calles
+      <ul><li>${cnt('Ejecutada')} ejecutadas · ${cnt('En ejecución')} en ejecución · ${cnt('Pagada, sin ejecutar')} pagadas sin ejecutar · ${cnt('Entregada, sin pago')} sin pago</li>
+      ${missing.length?`<li>Columnas no encontradas: ${missing.join(', ')}</li>`:''}
+      ${skipped.length?`<li>${skipped.length} fila(s) ignoradas por no tener domicilio</li>`:''}</ul>`);
+    if(parsed.hasCol){ const ps=[...new Set(out.map(r=>r.pliego).filter(Boolean))].sort(pliegoSort);
+      $('impPliegoHelp').textContent=`La planilla trae columna Pliego (${ps.join(', ')}). Este número se usa solo para las filas que no lo tengan.`; }
+    else $('impPliegoHelp').textContent='La planilla no trae columna Pliego: todos los registros van a este número.';
+    const porN=[...new Set(out.map(r=>r.por).filter(Boolean))];
+    if(porN.length){ document.querySelector('input[name=mode][value=merge]').checked=true; $('impPrev').insertAdjacentHTML('beforeend',`<div class="help" style="margin-top:6px">Registros enviados desde la versión solo carga por: <b>${porN.map(esc).join(', ')}</b>. Se seleccionó <b>Agregar</b> para sumarlos sin borrar nada.</div>`); }
+    $('impMode').style.display=''; impCheck();
+  }
+  return parsed;
 }
-function impCheck(){ const v=$('impPliego').value.trim().replace(/^pliego\s*/i,'');
-  document.querySelectorAll('.impP').forEach(s=>s.textContent=parsed&&parsed.hasCol?(s.dataset.pre==='al'?'a los pliegos del archivo':'de los pliegos del archivo'):(v?`${s.dataset.pre} pliego ${v}`:(s.dataset.pre==='al'?'a ese pliego':'de ese pliego')));
-  $('impApply').disabled=!parsed||(!v&&!(parsed.hasCol&&parsed.rows.every(r=>r.pliego)));
-  const exist=v&&DATA.filter(d=>d.pliego===v).length; $('impApply').textContent=exist&&!parsed?.hasCol?`Importar al pliego ${v} (ya tiene ${exist} registros)`:(v?`Importar al pliego ${v}`:'Importar'); }
+function parseAllPliegoSheets(names){
+  const all=[]; const sources={}; const errors=[];
+  names.forEach(name=>{
+    const match=String(name).trim().match(/^pliego\s*(\d+)$/i);
+    if(!match) return;
+    const pliego=match[1]; const one=parseOneSheet(name,pliego,true);
+    if(one&&one.rows.length){all.push(...one.rows);sources[pliego]=`“${wb._name}”, hoja ${String(name).trim()}`;}
+    else errors.push(String(name).trim());
+  });
+  if(!all.length){parsed=null;$('impApply').disabled=true;showPrev('<span class="err">No se encontraron registros válidos en las hojas PLIEGO.</span>');return;}
+  parsed={rows:all,name:`“${wb._name}”, hojas PLIEGO 3 y PLIEGO 4`,sources,multiSheet:true,hasCol:true};
+  const counts=Object.entries(sources).map(([p])=>`${all.filter(r=>String(r.pliego)===p).length} del pliego ${p}`);
+  showPrev(`<b>${all.length} registros detectados</b><ul>${counts.map(x=>`<li>${x}</li>`).join('')}</ul>Se importarán ambas hojas juntas. Los registros coincidentes se actualizarán y los demás se conservarán.`);
+  document.querySelector('input[name=mode][value=merge]').checked=true;
+  $('impMode').style.display=''; $('impPliegoHelp').textContent='Cada hoja se asigna automáticamente al pliego indicado en su nombre.';
+  $('impApply').disabled=false; $('impApply').textContent='Importar pliegos 3 y 4';
+}
+function parseSheet(){return parseOneSheet(undefined,undefined,false);}
 $('impPliego').oninput=impCheck;
 $('nuevoPliegoBtn').onclick=()=>{ const v=$('nuevoPliego').value.trim().replace(/^pliego\s*/i,''); if(!v) return;
-  if(pliegosList().includes(v)){ toast(`El pliego ${v} ya existe`); return; }
-  META={...META,pliegos:[...(META.pliegos||[]),v]}; $('nuevoPliego').value='';
+  if(pliegosList().some(p=>cleanPliego(p).toLocaleLowerCase('es')===v.toLocaleLowerCase('es'))){ toast(`El pliego ${v} ya existe`); return; }
+  META={...META,pliegos:[...(META.pliegos||[]).map(cleanPliego).filter(x=>x&&!isPliegoPrueba(x)),v]}; $('nuevoPliego').value='';
   if(ONLINE) onlineGuardarPliegos(); else if(!PWA) persist(); render(); toast(`Pliego ${v} creado`); };
 $('impApply').onclick=()=>{
   if(!parsed) return;
-  const mode=document.querySelector('input[name=mode]:checked').value;
+  const mode=parsed.multiSheet?'merge':document.querySelector('input[name=mode]:checked').value;
   const P=$('impPliego').value.trim().replace(/^pliego\s*/i,'');
-  const rowsP=parsed.rows.map(r=>({...r,pliego:r.pliego||P}));
+  const rowsP=parsed.rows.map(r=>({...r,pliego:cleanPliego(r.pliego||P)}));
   const ps=[...new Set(rowsP.map(r=>String(r.pliego)))];
-  if(mode==='replace'){ DATA=DATA.filter(d=>!ps.includes(d.pliego)).concat(rowsP.map(enrich)); parsed.msg=`${rowsP.length} registros en pliego ${ps.join(', ')}`; }
+  if(mode==='replace'&&!parsed.multiSheet){ DATA=DATA.filter(d=>!ps.includes(String(d.pliego))).concat(rowsP.map(enrich)); parsed.msg=`${rowsP.length} registros en pliego ${ps.join(', ')}`; }
   else{
     let add=0,upd=0;
-    rowsP.forEach(r=>{ const i=DATA.findIndex(d=>d.pliego===String(r.pliego)&&norm(d.cat)===norm(r.cat)&&norm(d.dom)===norm(r.dom));
+    rowsP.forEach(r=>{ const i=DATA.findIndex(d=>String(d.pliego).trim()===String(r.pliego).trim()&&norm(d.cat)===norm(r.cat)&&norm(d.dom)===norm(r.dom));
       if(i>=0){ DATA[i]=enrich({...strip(DATA[i]),...r,id:DATA[i].id}); upd++; } else { DATA.push(enrich(r)); add++; } });
     parsed.msg=`${add} agregados, ${upd} actualizados`;
   }
-  META={...META,fuentes:{...(META.fuentes||{}),...Object.fromEntries(ps.map(p=>[p,parsed.name]))}};
+  const sourceMap=parsed.sources||Object.fromEntries(ps.map(p=>[p,parsed.name]));
+  META={...META,pliegos:[...new Set([...(META.pliegos||[]),...ps].map(cleanPliego).filter(v=>v&&!isPliegoPrueba(v)))],fuentes:{...(META.fuentes||{}),...sourceMap}};
   F.calle=F.estado=F.fp=F.dom=F.ced=F.cat=''; F.pliego=ps.length===1?ps[0]:''; syncControls();
   persist(mode==='replace'?`Importados ${parsed.msg}`:`Importación pliego ${ps.join(', ')}: ${parsed.msg}`);
   parsed=null; $('impApply').disabled=true; $('impMode').style.display='none'; $('impPrev').style.display='none'; $('impSheetWrap').style.display='none';
@@ -2928,11 +2951,11 @@ async function onlineInit(){
     e=>{ ON.err='No se pudieron leer los registros ('+e.code+')'; render(); });
   db.collection('altas').onSnapshot(s=>{ ON.altas=s.docs.flatMap(x=>((x.data()||{}).items||[]).map(it=>({...it,src:'alta',uid:x.id}))); ON.ready.altas=true; rebuild(); },
     e=>{ ON.err='No se pudieron leer los registros nuevos ('+e.code+')'; render(); });
-  db.doc('config/general').onSnapshot(s=>{ ON.pliegos=(s.exists&&(s.data()||{}).pliegos)||[]; render(); },()=>{});
+  db.doc('config/general').onSnapshot(s=>{ const raw=(s.exists&&(s.data()||{}).pliegos)||[]; ON.pliegos=raw.map(cleanPliego).filter(v=>v&&!isPliegoPrueba(v)); if(admin&&raw.some(isPliegoPrueba)) db.doc('config/general').set({pliegos:[...new Set([...ON.pliegos,...(META.pliegos||[])].map(cleanPliego).filter(v=>v&&!isPliegoPrueba(v)))]}).catch(()=>{}); render(); },()=>{});
   render();
 }
 async function onlineGuardarPliegos(){
-  if(!ON.db) return; const lista=[...new Set([...(ON.pliegos||[]),...(META.pliegos||[])])];
+  if(!ON.db) return; const lista=[...new Set([...(ON.pliegos||[]),...(META.pliegos||[])].map(cleanPliego).filter(v=>v&&!isPliegoPrueba(v)))];
   try{ await ON.db.doc('config/general').set({pliegos:lista}); }catch(e){ toast('No se pudo guardar el pliego nuevo'); }
 }
 function onlineFail(msg){ ON.role='viewer'; ON.err=msg; CARGA=true; document.body.classList.add('modo-carga','sin-carga'); render(); }
