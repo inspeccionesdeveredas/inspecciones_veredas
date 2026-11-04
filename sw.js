@@ -1,5 +1,5 @@
 // Plan Mi Vereda: guarda la app en el dispositivo para usarla sin internet.
-const APP='pmv-app-v1', TILES='pmv-mapa-v1', MAX_TILES=3000;
+const APP='pmv-app-v2', TILES='pmv-mapa-v1', MAX_TILES=3000;
 const SHELL=['./','./index.html','./config.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',e=>{ e.waitUntil(caches.open(APP).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())); });
 self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==APP&&k!==TILES).map(k=>caches.delete(k)))).then(()=>self.clients.claim())); });
