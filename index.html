@@ -2772,6 +2772,33 @@ $('impApply').onclick=()=>{
   if(!parsed) return;
   const mode=parsed.multiSheet?'merge':document.querySelector('input[name=mode]:checked').value;
   const P=$('impPliego').value.trim().replace(/^pliego\s*/i,'');
+  if(parsed.multiSheet){
+    const key=r=>norm(r.cat)+'|'+norm(r.dom);
+    const keysByPliego=new Map();
+    parsed.rows.forEach(r=>{
+      const p=cleanPliego(r.pliego);
+      if(!keysByPliego.has(p)) keysByPliego.set(p,new Set());
+      keysByPliego.get(p).add(key(r));
+    });
+    const quitar=new Set();
+    DATA.forEach(d=>{
+      const anterior=cleanPliego(d.pliego), k=key(d);
+      if(!keysByPliego.has(anterior)) return;
+      const destino=[...keysByPliego.keys()].find(p=>p!==anterior&&keysByPliego.get(p).has(k)&&!keysByPliego.get(anterior).has(k));
+      if(!destino) return;
+      const correcto=DATA.find(x=>x!==d&&cleanPliego(x.pliego)===destino&&key(x)===k);
+      if(correcto){
+        const idx=DATA.indexOf(correcto);
+        DATA[idx]=enrich({...strip(d),...strip(correcto),id:correcto.id,pliego:destino});
+        quitar.add(d);
+      }else{
+        d.pliego=destino;
+        const idx=DATA.indexOf(d);
+        DATA[idx]=enrich(d);
+      }
+    });
+    if(quitar.size) DATA=DATA.filter(d=>!quitar.has(d));
+  }
   const rowsP=parsed.rows.map(r=>({...r,pliego:cleanPliego(r.pliego||P)}));
   const ps=[...new Set(rowsP.map(r=>String(r.pliego)))];
   if(mode==='replace'&&!parsed.multiSheet){ DATA=DATA.filter(d=>!ps.includes(String(d.pliego))).concat(rowsP.map(enrich)); parsed.msg=`${rowsP.length} registros en pliego ${ps.join(', ')}`; }
