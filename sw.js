@@ -1,7 +1,7 @@
 // Inspecciones de Veredas: guarda la app en el dispositivo para usarla sin internet.
-const APP='iv-admin-v1', TILES='iv-mapa-v1', MAX_TILES=3000;
-const SHELL=['./dashboard.html','./config.js','./manifest-admin.webmanifest','./icon-admin-192.png','./icon-admin-512.png'];
-self.addEventListener('install',e=>{ e.waitUntil(caches.open(APP).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())); });
+const APP='iv-app-v5', TILES='iv-mapa-v1', MAX_TILES=3000;
+const SHELL=['./','./index.html','./config.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./dashboard.html','./manifest-admin.webmanifest','./icon-admin-192.png','./icon-admin-512.png','./fachadas.html','./subsecretaria.html','./manifest-fachadas.webmanifest','./manifest-sub.webmanifest'];
+self.addEventListener('install',e=>{ e.waitUntil(caches.open(APP).then(c=>Promise.all(SHELL.map(u=>c.add(u).catch(()=>{})))).then(()=>self.skipWaiting())); });
 self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==APP&&k!==TILES).map(k=>caches.delete(k)))).then(()=>self.clients.claim())); });
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
