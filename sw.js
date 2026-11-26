@@ -1,5 +1,5 @@
 // Inspecciones de Veredas: guarda la app en el dispositivo para usarla sin internet.
-const APP='iv-app-v7', TILES='iv-mapa-v1', MAX_TILES=3000;
+const APP='iv-app-v8', TILES='iv-mapa-v1', MAX_TILES=3000;
 const SHELL=['./','./index.html','./config.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./dashboard.html','./manifest-admin.webmanifest','./icon-admin-192.png','./icon-admin-512.png','./fachadas.html','./subsecretaria.html','./manifest-fachadas.webmanifest','./manifest-sub.webmanifest'];
 self.addEventListener('install',e=>{ e.waitUntil(caches.open(APP).then(c=>Promise.all(SHELL.map(u=>c.add(u).catch(()=>{})))).then(()=>self.skipWaiting())); });
 self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==APP&&k!==TILES).map(k=>caches.delete(k)))).then(()=>self.clients.claim())); });
@@ -17,10 +17,12 @@ self.addEventListener('fetch',e=>{
   }
   const esApp = u.origin===location.origin && (e.request.mode==='navigate' || /\/(index\.html|dashboard\.html|fachadas\.html|subsecretaria\.html|config\.js|manifest(-admin|-fachadas|-sub)?\.webmanifest|icon-(admin-)?\d+\.png)?$/.test(u.pathname));
   if(esApp){
-    // la app: se abre al instante desde el dispositivo y se actualiza en segundo plano
-    e.respondWith(caches.open(APP).then(async c=>{ const hit=await c.match(e.request,{ignoreSearch:true});
-      const net=fetch(e.request).then(r=>{ if(r.ok) c.put(e.request,r.clone()); return r; }).catch(()=>null);
-      return hit || (await net) || c.match('./index.html'); }));
+    // la app: con internet se baja SIEMPRE la versión publicada (sin caché del navegador); sin señal o muy lenta, la guardada
+    e.respondWith(caches.open(APP).then(async c=>{
+      const red=fetch(e.request.url,{cache:'no-store',credentials:'same-origin'}).then(r=>{ if(r&&r.ok) c.put(e.request,r.clone()); return r; }).catch(()=>null);
+      const espera=new Promise(ok=>setTimeout(()=>ok(null),4000));
+      const r=await Promise.race([red,espera]); if(r&&r.ok) return r;
+      return (await c.match(e.request,{ignoreSearch:true})) || (await red) || (/config\.js$/.test(u.pathname)?new Response('',{status:504}):c.match('./index.html')); }));
   }
 });
 
